@@ -29,7 +29,7 @@ jobs:
           chmod +x ./gradlew
 
       - name: Build APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace || ./gradlew assembleDebug --no-daemon -Pandroid.overrideVersionCheck=true
+        run: ./gradlew assembleDebug --no-daemon -Pandroid.useAndroidX=true -Pandroid.enableJetifier=true
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
