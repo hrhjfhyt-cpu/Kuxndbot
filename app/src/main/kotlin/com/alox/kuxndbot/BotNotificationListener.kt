@@ -36,7 +36,6 @@ class BotNotificationListener : NotificationListenerService() {
         val reply = prefs.getString("reply", "") ?: ""
         if (reply.isBlank()) return
 
-        val notification = sbn.notification
         val delay = prefs.getInt("delay", 10).coerceAtLeast(0)
         val notificationKey = sbn.key
 
@@ -52,20 +51,14 @@ class BotNotificationListener : NotificationListenerService() {
                 }
 
                 val currentPrefs =
-                    getSharedPreferences(
-                        "bot_settings",
-                        MODE_PRIVATE
-                    )
+                    getSharedPreferences("bot_settings", MODE_PRIVATE)
 
                 if (!currentPrefs.getBoolean("enabled", false)) {
                     return@postDelayed
                 }
 
                 val currentReply =
-                    currentPrefs.getString(
-                        "reply",
-                        ""
-                    ) ?: ""
+                    currentPrefs.getString("reply", "") ?: ""
 
                 if (currentReply.isBlank()) {
                     return@postDelayed
@@ -111,47 +104,41 @@ class BotNotificationListener : NotificationListenerService() {
             }
         }
 
-        // الطريقة الإضافية البديلة:
-        // البحث الهيكلي داخل NotificationCompat Actions
+        // الطريقة الإضافية: CarExtender / Android Auto
         try {
-            val compatActionsCount =
-                NotificationCompat.getActionCount(notification)
+            val carExtender =
+                NotificationCompat.CarExtender(notification)
 
-            for (i in 0 until compatActionsCount) {
+            val unreadConversation =
+                carExtender.unreadConversation
 
-                val compatAction =
-                    NotificationCompat.getAction(
-                        notification,
-                        i
-                    )
+            if (unreadConversation != null) {
+
+                val carRemoteInput =
+                    unreadConversation.remoteInput
+
+                val carPendingIntent =
+                    unreadConversation.replyPendingIntent
 
                 if (
-                    compatAction != null &&
-                    compatAction.remoteInputs != null &&
-                    compatAction.remoteInputs!!.isNotEmpty()
+                    carRemoteInput != null &&
+                    carPendingIntent != null
                 ) {
 
-                    val nativeInputs =
-                        compatAction.remoteInputs!!.map { input ->
-
-                            RemoteInput.Builder(
-                                input.resultKey
-                            )
-                                .setLabel(input.label)
-                                .setChoices(input.choices)
-                                .build()
-                        }
-
-                    val pendingIntent =
-                        compatAction.actionIntent
+                    val nativeInput =
+                        RemoteInput.Builder(
+                            carRemoteInput.resultKey
+                        )
+                            .setLabel(carRemoteInput.label)
+                            .setChoices(carRemoteInput.choices)
+                            .build()
 
                     if (
-                        pendingIntent != null &&
                         sendUsingRemoteInput(
-                            pendingIntent,
-                            nativeInputs,
+                            carPendingIntent,
+                            listOf(nativeInput),
                             text,
-                            "CompatAction-$i"
+                            "CarExtender"
                         )
                     ) {
                         return
@@ -162,7 +149,7 @@ class BotNotificationListener : NotificationListenerService() {
         } catch (e: Exception) {
             Log.e(
                 TAG,
-                "Compat action reply method failed",
+                "CarExtender reply method failed",
                 e
             )
         }
