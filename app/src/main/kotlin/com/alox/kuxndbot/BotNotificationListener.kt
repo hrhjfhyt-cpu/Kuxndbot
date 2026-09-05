@@ -1,124 +1,162 @@
 package com.alox.kuxndbot
 
 import android.app.Notification
-import android.app.RemoteInput
-import android.content.Intent
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Log
 
 class BotNotificationListener : NotificationListenerService() {
 
-    private val handler = Handler(Looper.getMainLooper())
+    companion object {
+        private const val TAG = "AloxSilentTest"
+    }
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+
+        Log.d(TAG, "================================")
+        Log.d(TAG, "✅ Notification Listener CONNECTED")
+        Log.d(TAG, "================================")
+    }
 
     override fun onNotificationPosted(
         sbn: StatusBarNotification
     ) {
 
-        val prefs = getSharedPreferences(
-            "bot_settings",
-            MODE_PRIVATE
+        // نهتم بـ Messenger فقط
+        if (sbn.packageName != "com.facebook.orca") {
+            return
+        }
+
+        val notification = sbn.notification
+        val extras = notification.extras
+
+        Log.d(TAG, "================================")
+        Log.d(TAG, "📩 Messenger notification received")
+        Log.d(TAG, "Key: ${sbn.key}")
+        Log.d(TAG, "Package: ${sbn.packageName}")
+        Log.d(TAG, "ID: ${sbn.id}")
+        Log.d(TAG, "Tag: ${sbn.tag}")
+        Log.d(TAG, "Post time: ${sbn.postTime}")
+
+        // حالة الإشعار
+        Log.d(
+            TAG,
+            "isOngoing: ${sbn.isOngoing}"
         )
 
-        // البوت متوقف
-        if (!prefs.getBoolean("enabled", false)) {
-            return
-        }
+        Log.d(
+            TAG,
+            "isClearable: ${sbn.isClearable}"
+        )
 
-        // التطبيق المستهدف
-        val targetPackage = prefs.getString(
-            "package",
-            ""
-        ) ?: ""
+        Log.d(
+            TAG,
+            "Notification flags: ${notification.flags}"
+        )
 
-        // تجاهل أي تطبيق آخر
-        if (
-            targetPackage.isNotEmpty() &&
-            sbn.packageName != targetPackage
-        ) {
-            return
-        }
+        // هل هو Silent حسب Android؟
+        val isSilent =
+            (notification.flags and Notification.FLAG_ONLY_ALERT_ONCE) != 0
 
-        val delay = prefs.getInt(
-            "delay",
-            10
-        ).coerceAtLeast(0)
+        Log.d(
+            TAG,
+            "FLAG_ONLY_ALERT_ONCE: $isSilent"
+        )
 
-        val reply = prefs.getString(
-            "reply",
-            ""
-        ) ?: ""
+        // =========================
+        // النصوص
+        // =========================
 
-        if (reply.isBlank()) {
-            return
-        }
+        logExtra(
+            extras,
+            Notification.EXTRA_TITLE,
+            "EXTRA_TITLE"
+        )
 
-        // الانتظار حسب عدد الثواني المحدد
-        handler.postDelayed({
+        logExtra(
+            extras,
+            Notification.EXTRA_TEXT,
+            "EXTRA_TEXT"
+        )
 
-            sendReply(
-                sbn,
-                reply
-            )
+        logExtra(
+            extras,
+            Notification.EXTRA_BIG_TEXT,
+            "EXTRA_BIG_TEXT"
+        )
 
-        }, delay * 1000L)
-    }
+        logExtra(
+            extras,
+            Notification.EXTRA_SUB_TEXT,
+            "EXTRA_SUB_TEXT"
+        )
 
-    private fun sendReply(
-        sbn: StatusBarNotification,
-        text: String
-    ) {
+        // =========================
+        // جميع Extras
+        // =========================
 
-        val notification =
-            sbn.notification
+        Log.d(TAG, "---- ALL EXTRAS ----")
 
-        val actions =
-            notification.actions
-                ?: return
-
-        for (action in actions) {
-
-            val remoteInputs =
-                action.remoteInputs
-                    ?: continue
-
-            if (remoteInputs.isEmpty()) {
-                continue
-            }
-
-            val intent = Intent()
-
-            val results = Bundle()
-
-            for (input in remoteInputs) {
-
-                results.putCharSequence(
-                    input.resultKey,
-                    text
-                )
-            }
-
-            RemoteInput.addResultsToIntent(
-                remoteInputs,
-                intent,
-                results
-            )
+        for (key in extras.keySet()) {
 
             try {
 
-                action.actionIntent.send(
-                    this,
-                    0,
-                    intent
+                val value = extras.get(key)
+
+                Log.d(
+                    TAG,
+                    "$key = $value"
                 )
 
-            } catch (_: Exception) {
-                // التطبيق قد لا يسمح بالرد من الإشعار
-            }
+            } catch (e: Exception) {
 
+                Log.d(
+                    TAG,
+                    "$key = <error>"
+                )
+            }
+        }
+
+        Log.d(TAG, "---- END EXTRAS ----")
+        Log.d(TAG, "================================")
+    }
+
+    private fun logExtra(
+        extras: Bundle,
+        key: String,
+        label: String
+    ) {
+
+        val value =
+            extras.getCharSequence(key)
+
+        Log.d(
+            TAG,
+            "$label: ${value ?: "<null>"}"
+        )
+    }
+
+    override fun onNotificationRemoved(
+        sbn: StatusBarNotification,
+        rankingMap: RankingMap
+    ) {
+
+        if (sbn.packageName != "com.facebook.orca") {
             return
         }
+
+        Log.d(TAG, "🗑 Messenger notification REMOVED")
+        Log.d(TAG, "Key: ${sbn.key}")
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+
+        Log.d(
+            TAG,
+            "❌ Notification Listener DISCONNECTED"
+        )
     }
 }
