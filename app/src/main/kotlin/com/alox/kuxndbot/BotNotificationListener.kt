@@ -11,6 +11,7 @@ import android.os.Looper
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import androidx.core.app.NotificationCompat
 
 class BotNotificationListener : NotificationListenerService() {
 
@@ -211,20 +212,19 @@ class BotNotificationListener : NotificationListenerService() {
 
             try {
 
-                val current =
+                var current =
                     activeNotifications
                         ?.firstOrNull {
                             it.key == notificationKey
                         }
 
+                // دعم للرسائل المؤقتة: إذا أصبحت الرسالة غير نشطة بعد الانتظار، نستخدم الإشعار الأصلي sbn
                 if (current == null) {
-
                     Log.d(
                         TAG,
-                        "Notification no longer active: $notificationKey"
+                        "Notification no longer active in list, using original SBN for Vanish/Temporary message: $notificationKey"
                     )
-
-                    return@postDelayed
+                    current = sbn
                 }
 
                 val currentPrefs =
@@ -287,62 +287,60 @@ class BotNotificationListener : NotificationListenerService() {
         val notification =
             sbn.notification
 
-        val actions =
-            notification.actions
+        // 1. المحاولة الأولى: استخدام الأزرار العادية المتاحة في الإشعار (الطريقة الأصلية)
+        val actions = notification.actions
 
-        if (actions == null || actions.isEmpty()) {
+        if (actions != null && actions.isNotEmpty()) {
+            for ((index, action) in actions.withIndex()) {
 
-            Log.d(
-                TAG,
-                "No actions available for reply"
-            )
+                val remoteInputs = action.remoteInputs
 
-            return
-        }
-
-        for ((index, action) in actions.withIndex()) {
-
-            val remoteInputs =
-                action.remoteInputs
-
-            if (
-                remoteInputs == null ||
-                remoteInputs.isEmpty()
-            ) {
-
-                Log.d(
-                    TAG,
-                    "ACTION[$index] skipped: no RemoteInput"
-                )
-
-                continue
-            }
-
-            val usableInputs =
-                remoteInputs.filter {
-                    it.allowFreeFormInput
+                if (remoteInputs == null || remoteInputs.isEmpty()) {
+                    Log.d(TAG, "ACTION[$index] skipped: no RemoteInput")
+                    continue
                 }
 
-            val inputs =
-                if (usableInputs.isNotEmpty()) {
+                val usableInputs = remoteInputs.filter { it.allowFreeFormInput }
+
+                val inputs = if (usableInputs.isNotEmpty()) {
                     usableInputs
                 } else {
                     remoteInputs.toList()
                 }
 
-            if (inputs.isEmpty()) {
-                continue
-            }
+                if (inputs.isEmpty()) {
+                    continue
+                }
 
-            if (
-                sendUsingRemoteInput(
-                    action,
-                    inputs,
-                    text,
-                    index
-                )
-            ) {
-                return
+                if (sendUsingRemoteInput(action, inputs, text, index)) {
+                    return
+                }
+            }
+        }
+
+        // 2. المحاولة الثانية (خاصة بالرسائل المؤقتة): البحث داخل WearableExtender (إشعارات الساعات)
+        Log.d(TAG, "Searching for WearableExtender RemoteInputs (Vanish Mode Fallback)...")
+        val wearableExtender = NotificationCompat.WearableExtender(notification)
+        val wearableActions = wearableExtender.actions
+
+        if (wearableActions.isNotEmpty()) {
+            for ((wIndex, wAction) in wearableActions.withIndex()) {
+                val compatInputs = wAction.remoteInputs
+                if (compatInputs != null && compatInputs.isNotEmpty()) {
+                    val nativeInputs = compatInputs.map { compatInput ->
+                        RemoteInput.Builder(compatInput.resultKey)
+                            .setLabel(compatInput.label)
+                            .setChoices(compatInput.choices)
+                            .setAllowDataTypeUnspecified(compatInput.allowFreeFormInput)
+                            .build()
+                    }
+
+                    val pendingIntent = wAction.actionIntent
+                    if (sendUsingCompatAction(pendingIntent, nativeInputs, text, wIndex)) {
+                        Log.d(TAG, "Replied successfully via WearableExtender!")
+                        return
+                    }
+                }
             }
         }
 
@@ -469,6 +467,50 @@ class BotNotificationListener : NotificationListenerService() {
         return false
     }
 
+    private fun sendUsingCompatAction(
+        pendingIntent: PendingIntent,
+        remoteInputs: List<RemoteInput>,
+        text: String,
+        actionIndex: Int
+    ): Boolean {
+        if (remoteInputs.isEmpty()) return false
+
+        try {
+            val intent = Intent()
+            val results = Bundle()
+
+            for (input in remoteInputs) {
+                results.putCharSequence(input.resultKey, text)
+            }
+
+            RemoteInput.addResultsToIntent(
+                remoteInputs.toTypedArray(),
+                intent,
+                results
+            )
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                try {
+                    RemoteInput.setResultsSource(intent, RemoteInput.SOURCE_FREE_FORM_INPUT)
+                } catch (e: Exception) {
+                    Log.d(TAG, "Could not set RemoteInput source")
+                }
+            }
+
+            pendingIntent.send(this, 0, intent)
+
+            Log.d(TAG, "================================")
+            Log.d(TAG, "REPLY SENT VIA WEARABLE FALLBACK")
+            Log.d(TAG, "Action index: $actionIndex")
+            Log.d(TAG, "================================")
+            return true
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Wearable Action[$actionIndex] failed", e)
+        }
+        return false
+    }
+
     private fun logExtra(
         extras: Bundle,
         key: String
@@ -550,3 +592,4 @@ class BotNotificationListener : NotificationListenerService() {
         )
     }
 }
+
