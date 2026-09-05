@@ -36,6 +36,7 @@ class BotNotificationListener : NotificationListenerService() {
         val reply = prefs.getString("reply", "") ?: ""
         if (reply.isBlank()) return
 
+        val notification = sbn.notification
         val delay = prefs.getInt("delay", 10).coerceAtLeast(0)
         val notificationKey = sbn.key
 
@@ -70,17 +71,10 @@ class BotNotificationListener : NotificationListenerService() {
                     return@postDelayed
                 }
 
-                sendReply(
-                    current,
-                    currentReply
-                )
+                sendReply(current, currentReply)
 
             } catch (e: Exception) {
-                Log.e(
-                    TAG,
-                    "Reply failed",
-                    e
-                )
+                Log.e(TAG, "Reply failed", e)
             }
         }, delay * 1000L)
     }
@@ -91,22 +85,18 @@ class BotNotificationListener : NotificationListenerService() {
     ) {
         val notification = sbn.notification
 
-        // الطريقة الأساسية:
-        // استخدام أزرار الرد الموجودة مباشرة داخل الإشعار.
+        // الطريقة المعتادة
         val actions = notification.actions
 
         if (actions != null && actions.isNotEmpty()) {
-
             for ((index, action) in actions.withIndex()) {
 
-                val remoteInputs =
-                    action.remoteInputs
+                val remoteInputs = action.remoteInputs
 
                 if (
                     remoteInputs != null &&
                     remoteInputs.isNotEmpty()
                 ) {
-
                     if (
                         sendUsingRemoteInput(
                             action.actionIntent,
@@ -121,34 +111,28 @@ class BotNotificationListener : NotificationListenerService() {
             }
         }
 
-        // الطريقة الإضافية:
-        // استخراج Reply Actions الموجودة داخل WearableExtender.
-        // تستخدم فقط إذا فشلت الطريقة الأساسية.
+        // الطريقة الإضافية البديلة:
+        // البحث الهيكلي داخل NotificationCompat Actions
         try {
+            val compatActionsCount =
+                NotificationCompat.getActionCount(notification)
 
-            val wearableExtender =
-                NotificationCompat.WearableExtender(
-                    notification
-                )
+            for (i in 0 until compatActionsCount) {
 
-            val wearableActions =
-                wearableExtender.actions
-
-            for (
-                (index, wearableAction)
-                in wearableActions.withIndex()
-            ) {
-
-                val compatInputs =
-                    wearableAction.remoteInputs
+                val compatAction =
+                    NotificationCompat.getAction(
+                        notification,
+                        i
+                    )
 
                 if (
-                    compatInputs != null &&
-                    compatInputs.isNotEmpty()
+                    compatAction != null &&
+                    compatAction.remoteInputs != null &&
+                    compatAction.remoteInputs!!.isNotEmpty()
                 ) {
 
                     val nativeInputs =
-                        compatInputs.map { input ->
+                        compatAction.remoteInputs!!.map { input ->
 
                             RemoteInput.Builder(
                                 input.resultKey
@@ -159,7 +143,7 @@ class BotNotificationListener : NotificationListenerService() {
                         }
 
                     val pendingIntent =
-                        wearableAction.actionIntent
+                        compatAction.actionIntent
 
                     if (
                         pendingIntent != null &&
@@ -167,7 +151,7 @@ class BotNotificationListener : NotificationListenerService() {
                             pendingIntent,
                             nativeInputs,
                             text,
-                            "Temporary/Wearable-$index"
+                            "CompatAction-$i"
                         )
                     ) {
                         return
@@ -176,10 +160,9 @@ class BotNotificationListener : NotificationListenerService() {
             }
 
         } catch (e: Exception) {
-
             Log.e(
                 TAG,
-                "Temporary/Wearable reply method failed",
+                "Compat action reply method failed",
                 e
             )
         }
@@ -207,7 +190,6 @@ class BotNotificationListener : NotificationListenerService() {
             val results = Bundle()
 
             for (input in remoteInputs) {
-
                 results.putCharSequence(
                     input.resultKey,
                     text
@@ -224,16 +206,12 @@ class BotNotificationListener : NotificationListenerService() {
                 Build.VERSION.SDK_INT >=
                 Build.VERSION_CODES.P
             ) {
-
                 try {
-
                     RemoteInput.setResultsSource(
                         intent,
                         RemoteInput.SOURCE_FREE_FORM_INPUT
                     )
-
                 } catch (e: Exception) {
-
                     Log.d(
                         TAG,
                         "Could not set RemoteInput source: ${e.message}"
@@ -268,10 +246,6 @@ class BotNotificationListener : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
-
-        Log.d(
-            TAG,
-            "BOT DISCONNECTED"
-        )
+        Log.d(TAG, "BOT DISCONNECTED")
     }
 }
