@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
-      - master
+      - '**'
 
 jobs:
   build:
@@ -24,6 +23,11 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Ensure gradlew exists and has permissions
+        run: |
+          gradle wrapper
+          chmod +x ./gradlew
+
       - name: Build APK
         run: ./gradlew assembleDebug --no-daemon
 
@@ -32,4 +36,3 @@ jobs:
         with:
           name: Kuxndbot-APK
           path: app/build/outputs/apk/debug/app-debug.apk
-
