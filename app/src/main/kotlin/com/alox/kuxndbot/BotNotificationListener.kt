@@ -1,4 +1,4 @@
-package com.alox.kuxndbot
+Enterpackage com.alox.kuxndbot
 
 import android.app.Notification
 import android.app.PendingIntent
@@ -218,7 +218,6 @@ class BotNotificationListener : NotificationListenerService() {
                             it.key == notificationKey
                         }
 
-                // دعم للرسائل المؤقتة: إذا أصبحت الرسالة غير نشطة بعد الانتظار، نستخدم الإشعار الأصلي sbn
                 if (current == null) {
                     Log.d(
                         TAG,
@@ -287,7 +286,6 @@ class BotNotificationListener : NotificationListenerService() {
         val notification =
             sbn.notification
 
-        // 1. المحاولة الأولى: استخدام الأزرار العادية المتاحة في الإشعار (الطريقة الأصلية)
         val actions = notification.actions
 
         if (actions != null && actions.isNotEmpty()) {
@@ -318,7 +316,6 @@ class BotNotificationListener : NotificationListenerService() {
             }
         }
 
-        // 2. المحاولة الثانية (خاصة بالرسائل المؤقتة): البحث داخل WearableExtender (إشعارات الساعات)
         Log.d(TAG, "Searching for WearableExtender RemoteInputs (Vanish Mode Fallback)...")
         val wearableExtender = NotificationCompat.WearableExtender(notification)
         val wearableActions = wearableExtender.actions
@@ -331,12 +328,11 @@ class BotNotificationListener : NotificationListenerService() {
                         RemoteInput.Builder(compatInput.resultKey)
                             .setLabel(compatInput.label)
                             .setChoices(compatInput.choices)
-                            .setAllowDataTypeUnspecified(compatInput.allowFreeFormInput)
                             .build()
                     }
 
                     val pendingIntent = wAction.actionIntent
-                    if (sendUsingCompatAction(pendingIntent, nativeInputs, text, wIndex)) {
+                    if (pendingIntent != null && sendUsingCompatAction(pendingIntent, nativeInputs, text, wIndex)) {
                         Log.d(TAG, "Replied successfully via WearableExtender!")
                         return
                     }
@@ -592,4 +588,3 @@ class BotNotificationListener : NotificationListenerService() {
         )
     }
 }
-
