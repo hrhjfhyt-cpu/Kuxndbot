@@ -1,32 +1,61 @@
-<?xml version="1.0" encoding="utf-8"?>  <manifest xmlns:android="http://schemas.android.com/apk/res/android">  <application  
-    android:allowBackup="true"  
-    android:label="Alox Dashboard Bot"  
-    android:supportsRtl="true"  
-    android:theme="@style/AppTheme">  
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <activity  
-        android:name=".MainActivity"  
-        android:exported="true">  
+    <!-- السماح للنافذة العائمة بالظهور فوق التطبيقات -->
+    <uses-permission
+        android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
-        <intent-filter>  
-            <action android:name="android.intent.action.MAIN" />  
-            <category android:name="android.intent.category.LAUNCHER" />  
-        </intent-filter>  
+    <!-- تشغيل الخدمة في الواجهة -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE" />
 
-    </activity>  
+    <!-- Android 13+ -->
+    <uses-permission
+        android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <service  
-        android:name=".BotNotificationListener"  
-        android:label="Alox Dashboard Bot"  
-        android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"  
-        android:exported="true">  
+    <application
+        android:allowBackup="true"
+        android:label="Alox Dashboard Bot"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme"
+        android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher">
 
-        <intent-filter>  
-            <action android:name="android.service.notification.NotificationListenerService" />  
-        </intent-filter>  
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
 
-    </service>  
+            <intent-filter>
+                <action
+                    android:name="android.intent.action.MAIN" />
 
-</application>
+                <category
+                    android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <!-- Messenger Notification Listener -->
+        <service
+            android:name=".BotNotificationListener"
+            android:label="Alox Dashboard Bot"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+
+            <intent-filter>
+                <action
+                    android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+
+        </service>
+
+        <!-- Floating Window -->
+        <service
+            android:name=".FloatingWindowService"
+            android:label="Alox Floating Bot"
+            android:exported="false"
+            android:stopWithTask="false" />
+
+    </application>
 
 </manifest>
