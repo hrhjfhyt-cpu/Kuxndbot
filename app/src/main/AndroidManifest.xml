@@ -5,7 +5,9 @@
         android:allowBackup="true"
         android:label="Alox Dashboard Bot"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme">
+        android:theme="@style/AppTheme"
+        android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher">
 
         <activity
             android:name=".MainActivity"
