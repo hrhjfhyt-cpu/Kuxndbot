@@ -5,9 +5,9 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
-import android.view.View
 import android.widget.*
 
 class MainActivity : Activity() {
@@ -36,10 +36,6 @@ class MainActivity : Activity() {
 
     private fun buildDashboard() {
 
-        /*
-         * الصفحة الرئيسية قابلة للتمرير فقط بمقدار
-         * المحتوى الموجود فعلياً، وليست Scroll لا نهائية.
-         */
         val scrollView = ScrollView(this).apply {
             setBackgroundColor(bgColor)
             isFillViewport = true
@@ -146,8 +142,6 @@ class MainActivity : Activity() {
 
         val appField = roundedField()
 
-        // المستخدم يرى Messenger فقط.
-        // com.facebook.orca لا يظهر في الواجهة.
         appField.setText("Messenger")
         appField.isFocusable = false
         appField.isClickable = false
@@ -192,7 +186,9 @@ class MainActivity : Activity() {
 
         replyInput.minLines = 4
         replyInput.maxLines = 8
-        replyInput.gravity = Gravity.TOP or Gravity.START
+        replyInput.gravity =
+            Gravity.TOP or Gravity.START
+
         replyInput.inputType =
             InputType.TYPE_CLASS_TEXT or
             InputType.TYPE_TEXT_FLAG_MULTI_LINE or
@@ -221,12 +217,18 @@ class MainActivity : Activity() {
             textSize = 16f
             setTextColor(white)
 
-            background = roundedBackground(
-                purple,
-                18
-            )
+            background =
+                roundedBackground(
+                    purple,
+                    18
+                )
 
-            setPadding(20, 16, 20, 16)
+            setPadding(
+                20,
+                16,
+                20,
+                16
+            )
 
             setOnClickListener {
 
@@ -249,8 +251,6 @@ class MainActivity : Activity() {
                         "reply",
                         replyInput.text.toString()
                     )
-                    // الاسم الداخلي فقط.
-                    // المستخدم لا يراه.
                     .putString(
                         "package",
                         "com.facebook.orca"
@@ -284,6 +284,104 @@ class MainActivity : Activity() {
         )
 
         // =========================
+        // FLOATING WINDOW
+        // =========================
+
+        val floatingButton = Button(this).apply {
+
+            text = "🪟 POPUP WINDOW"
+            textSize = 16f
+            setTextColor(white)
+
+            background =
+                roundedBackground(
+                    purple,
+                    18
+                )
+
+            setPadding(
+                20,
+                16,
+                20,
+                16
+            )
+
+            setOnClickListener {
+
+                if (!Settings.canDrawOverlays(this@MainActivity)) {
+
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Allow 'Display over other apps' first",
+                        Toast.LENGTH_LONG
+                    ).show()
+
+                    try {
+                        startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                android.net.Uri.parse(
+                                    "package:$packageName"
+                                )
+                            )
+                        )
+                    } catch (_: Exception) {
+                        startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION
+                            )
+                        )
+                    }
+
+                    return@setOnClickListener
+                }
+
+                try {
+
+                    val serviceIntent =
+                        Intent(
+                            this@MainActivity,
+                            FloatingWindowService::class.java
+                        )
+
+                    startService(serviceIntent)
+
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Popup window enabled 🪟",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                } catch (e: Exception) {
+
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Could not start popup window",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+
+        val floatingParams =
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                58.dp()
+            )
+
+        floatingParams.setMargins(
+            0,
+            4.dp(),
+            0,
+            12.dp()
+        )
+
+        page.addView(
+            floatingButton,
+            floatingParams
+        )
+
+        // =========================
         // NOTIFICATION ACCESS
         // =========================
 
@@ -293,12 +391,18 @@ class MainActivity : Activity() {
             textSize = 16f
             setTextColor(white)
 
-            background = roundedBackground(
-                blue,
-                18
-            )
+            background =
+                roundedBackground(
+                    blue,
+                    18
+                )
 
-            setPadding(20, 16, 20, 16)
+            setPadding(
+                20,
+                16,
+                20,
+                16
+            )
 
             setOnClickListener {
 
@@ -314,7 +418,7 @@ class MainActivity : Activity() {
 
                     startActivity(
                         Intent(
-                            android.provider.Settings.ACTION_SETTINGS
+                            Settings.ACTION_SETTINGS
                         )
                     )
                 }
