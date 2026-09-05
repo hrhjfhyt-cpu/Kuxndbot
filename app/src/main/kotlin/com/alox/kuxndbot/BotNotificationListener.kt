@@ -85,7 +85,7 @@ class BotNotificationListener : NotificationListenerService() {
         Log.d(TAG, "Channel: ${sbn.notification.channelId}")
 
         // =========================
-        // البيانات النصية المتاحة
+        // كل البيانات النصية المتاحة
         // =========================
 
         logExtra(
@@ -229,7 +229,7 @@ class BotNotificationListener : NotificationListenerService() {
 
         /*
          * نحفظ مفتاح الإشعار بدل الاعتماد
-         * على كائن sbn القديم بعد التأخير.
+         * على كائن sbn القديم بعد انتهاء التأخير.
          */
         val notificationKey = sbn.key
 
@@ -286,175 +286,88 @@ class BotNotificationListener : NotificationListenerService() {
         val notification =
             sbn.notification
 
-        /*
-         * ==========================================
-         * المحاولة الأولى:
-         * فحص جميع Actions كما في الطريقة الأصلية
-         * ==========================================
-         */
-
         val actions =
             notification.actions
 
         if (
-            actions != null &&
-            actions.isNotEmpty()
+            actions == null ||
+            actions.isEmpty()
         ) {
 
-            for ((index, action) in actions.withIndex()) {
+            Log.d(
+                TAG,
+                "❌ No actions available for reply"
+            )
 
-                val remoteInputs =
-                    action.remoteInputs
-
-                if (
-                    remoteInputs == null ||
-                    remoteInputs.isEmpty()
-                ) {
-
-                    Log.d(
-                        TAG,
-                        "ACTION[$index] skipped: no RemoteInput"
-                    )
-
-                    continue
-                }
-
-                val usableInputs =
-                    remoteInputs.filter {
-                        it.allowFreeFormInput
-                    }
-
-                val inputs =
-                    if (usableInputs.isNotEmpty()) {
-                        usableInputs
-                    } else {
-                        remoteInputs.toList()
-                    }
-
-                if (inputs.isEmpty()) {
-                    continue
-                }
-
-                if (
-                    trySendUsingAction(
-                        action,
-                        inputs,
-                        text,
-                        index
-                    )
-                ) {
-                    return
-                }
-            }
+            return
         }
 
         /*
-         * ==========================================
-         * المحاولة الثانية:
-         * Android Notification.findRemoteInputActionPair()
+         * نفحص جميع Actions.
          *
-         * هذه طريقة إضافية فقط.
-         * لا تستبدل الطريقة الأصلية.
-         * ==========================================
+         * لا نتوقف عند Action لا يحتوي
+         * RemoteInput.
          */
+        for ((index, action) in actions.withIndex()) {
 
-        try {
+            val remoteInputs =
+                action.remoteInputs
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            if (
+                remoteInputs == null ||
+                remoteInputs.isEmpty()
+            ) {
 
-                val pairFreeForm =
-                    notification.findRemoteInputActionPair(true)
+                Log.d(
+                    TAG,
+                    "ACTION[$index] skipped: no RemoteInput"
+                )
 
-                if (pairFreeForm != null) {
-
-                    val action =
-                        pairFreeForm.first
-
-                    val remoteInputs =
-                        pairFreeForm.second
-
-                    Log.d(
-                        TAG,
-                        "🔎 Fallback RemoteInput pair found (freeForm=true)"
-                    )
-
-                    if (
-                        trySendUsingAction(
-                            action,
-                            remoteInputs.toList(),
-                            text,
-                            -1
-                        )
-                    ) {
-                        return
-                    }
-                }
+                continue
             }
 
-        } catch (e: Exception) {
+            /*
+             * نحاول أولًا استخدام RemoteInputs
+             * التي تسمح بإدخال نص حر.
+             */
+            val usableInputs =
+                remoteInputs.filter {
+                    it.allowFreeFormInput
+                }
 
-            Log.e(
-                TAG,
-                "⚠️ freeForm RemoteInput lookup failed",
-                e
-            )
+            val inputs =
+                if (usableInputs.isNotEmpty()) {
+                    usableInputs
+                } else {
+                    remoteInputs.toList()
+                }
+
+            if (inputs.isEmpty()) {
+                continue
+            }
+
+            val sent =
+                sendUsingRemoteInput(
+                    action,
+                    inputs,
+                    text,
+                    index
+                )
+
+            if (sent) {
+                return
+            }
         }
 
         /*
-         * ==========================================
-         * المحاولة الثالثة:
-         * البحث بدون اشتراط FreeForm
-         * ==========================================
+         * لا يوجد RemoteInput قابل للاستخدام.
+         *
+         * لا نحذف الإشعار.
+         * لا نفتح Messenger.
+         * لا نستخدم Accessibility.
+         *
+         * فقط نسجل الحالة.
          */
-
-        try {
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-
-                val pairAny =
-                    notification.findRemoteInputActionPair(false)
-
-                if (pairAny != null) {
-
-                    val action =
-                        pairAny.first
-
-                    val remoteInputs =
-                        pairAny.second
-
-                    Log.d(
-                        TAG,
-                        "🔎 Fallback RemoteInput pair found (freeForm=false)"
-                    )
-
-                    if (
-                        trySendUsingAction(
-                            action,
-                            remoteInputs.toList(),
-                            text,
-                            -2
-                        )
-                    ) {
-                        return
-                    }
-                }
-            }
-
-        } catch (e: Exception) {
-
-            Log.e(
-                TAG,
-                "⚠️ generic RemoteInput lookup failed",
-                e
-            )
-        }
-
-        /*
-         * ==========================================
-         * لا يوجد مسار إرسال مباشر
-         * ==========================================
-         */
-
         Log.d(
             TAG,
             "⚠️ Messenger notification has no usable RemoteInput"
@@ -467,10 +380,10 @@ class BotNotificationListener : NotificationListenerService() {
     }
 
     // =========================
-    // تنفيذ PendingIntent
+    // إرسال RemoteInput
     // =========================
 
-    private fun trySendUsingAction(
+    private fun sendUsingRemoteInput(
         action: Notification.Action,
         remoteInputs: List<RemoteInput>,
         text: String,
@@ -483,9 +396,15 @@ class BotNotificationListener : NotificationListenerService() {
 
         try {
 
+            /*
+             * Intent جديد لتمرير نتيجة RemoteInput.
+             */
             val intent =
                 Intent()
 
+            /*
+             * القيم التي سيتم إرسالها.
+             */
             val results =
                 Bundle()
 
@@ -498,7 +417,8 @@ class BotNotificationListener : NotificationListenerService() {
             }
 
             /*
-             * إضافة النص إلى RemoteInput.
+             * إضافة النتائج إلى Intent
+             * بالطريقة الأصلية الخاصة بأندرويد.
              */
             RemoteInput.addResultsToIntent(
                 remoteInputs.toTypedArray(),
@@ -508,9 +428,12 @@ class BotNotificationListener : NotificationListenerService() {
 
             /*
              * Android 9+:
-             * نحدد أن مصدر النتيجة إدخال حر.
              *
-             * لا نستخدمها على الإصدارات القديمة.
+             * نخبر Android أن النتيجة
+             * جاءت من إدخال نص حر.
+             *
+             * هذا تحسين إضافي فقط ولا يغير
+             * طريقة الإرسال الأساسية.
              */
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
 
@@ -519,6 +442,11 @@ class BotNotificationListener : NotificationListenerService() {
                     RemoteInput.setResultsSource(
                         intent,
                         RemoteInput.SOURCE_FREE_FORM_INPUT
+                    )
+
+                    Log.d(
+                        TAG,
+                        "✅ RemoteInput source set to FREE_FORM_INPUT"
                     )
 
                 } catch (e: Exception) {
@@ -531,8 +459,8 @@ class BotNotificationListener : NotificationListenerService() {
             }
 
             /*
-             * إرسال PendingIntent الأصلي
-             * الذي أعطاه Messenger للإشعار.
+             * تنفيذ PendingIntent الذي قدمه
+             * Messenger مع Notification Action.
              */
             action.actionIntent.send(
                 this,
@@ -681,3 +609,7 @@ class BotNotificationListener : NotificationListenerService() {
         )
     }
 }
+
+هذه النسخة لا تحتوي على "findRemoteInputActionPair" إطلاقًا، وبالتالي خطأ السطرين 383/384 و432/433 لن يظهر.
+
+جرّب الـ Build الآن.
