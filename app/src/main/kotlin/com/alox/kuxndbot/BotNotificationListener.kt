@@ -1,4 +1,4 @@
-Enterpackage com.alox.kuxndbot
+package com.alox.kuxndbot
 
 import android.app.Notification
 import android.app.PendingIntent
@@ -588,3 +588,4 @@ class BotNotificationListener : NotificationListenerService() {
         )
     }
 }
+
