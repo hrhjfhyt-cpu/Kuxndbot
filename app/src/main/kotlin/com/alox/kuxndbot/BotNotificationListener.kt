@@ -46,6 +46,7 @@ class BotNotificationListener : NotificationListenerService() {
         sbn: StatusBarNotification
     ) {
 
+        // Messenger فقط
         if (sbn.packageName != MESSENGER_PACKAGE) {
             return
         }
@@ -55,6 +56,7 @@ class BotNotificationListener : NotificationListenerService() {
             MODE_PRIVATE
         )
 
+        // البوت متوقف
         if (!prefs.getBoolean("enabled", false)) {
             Log.d(TAG, "⏹ Bot disabled")
             return
@@ -111,11 +113,13 @@ class BotNotificationListener : NotificationListenerService() {
         )
 
         // =========================
-        // فحص كل Extras
+        // فحص جميع Extras
         // =========================
 
         for (key in extras.keySet()) {
+
             try {
+
                 val value = extras.get(key)
 
                 Log.d(
@@ -123,7 +127,8 @@ class BotNotificationListener : NotificationListenerService() {
                     "EXTRA [$key] = ${describeValue(value)}"
                 )
 
-            } catch (e: Exception) {
+            } catch (_: Exception) {
+
                 Log.d(
                     TAG,
                     "EXTRA [$key] = <unreadable>"
@@ -132,12 +137,15 @@ class BotNotificationListener : NotificationListenerService() {
         }
 
         // =========================
-        // فحص Actions
+        // فحص جميع Actions
         // =========================
 
         val actions = notification.actions
 
-        if (actions == null || actions.isEmpty()) {
+        if (
+            actions == null ||
+            actions.isEmpty()
+        ) {
 
             Log.d(
                 TAG,
@@ -161,11 +169,6 @@ class BotNotificationListener : NotificationListenerService() {
                 Log.d(
                     TAG,
                     "ACTION[$index] semanticAction=${action.semanticAction}"
-                )
-
-                Log.d(
-                    TAG,
-                    "ACTION[$index] showsUserInterface=${action.showsUserInterface}"
                 )
 
                 val remoteInputs =
@@ -204,9 +207,7 @@ class BotNotificationListener : NotificationListenerService() {
 
                     Log.d(
                         TAG,
-                        "ACTION[$index] intent=${
-                            action.actionIntent
-                        }"
+                        "ACTION[$index] intent=${action.actionIntent}"
                     )
 
                 } catch (_: Exception) {
@@ -216,16 +217,18 @@ class BotNotificationListener : NotificationListenerService() {
 
         Log.d(TAG, "================================")
 
+        // =========================
+        // التأخير
+        // =========================
+
         val delay = prefs.getInt(
             "delay",
             10
         ).coerceAtLeast(0)
 
         /*
-         * نحتفظ بنفس فكرة التأخير.
-         *
-         * نستخدم key للإشعار بدل الاعتماد على
-         * كائن sbn القديم بعد مرور الوقت.
+         * نحتفظ بمفتاح الإشعار بدل الاعتماد على
+         * كائن sbn القديم بعد انتهاء التأخير.
          */
         val notificationKey = sbn.key
 
@@ -246,9 +249,6 @@ class BotNotificationListener : NotificationListenerService() {
                         "⚠️ Notification no longer active: $notificationKey"
                     )
 
-                    /*
-                     * لا نرسل من إشعار قديم.
-                     */
                     return@postDelayed
                 }
 
@@ -302,9 +302,9 @@ class BotNotificationListener : NotificationListenerService() {
         }
 
         /*
-         * نبحث في جميع Actions.
+         * نفحص جميع Actions.
          *
-         * لا نكتفي بأول Action لا يحتوي
+         * لا نتوقف عند Action لا يحتوي
          * RemoteInput.
          */
         for ((index, action) in actions.withIndex()) {
@@ -325,6 +325,10 @@ class BotNotificationListener : NotificationListenerService() {
                 continue
             }
 
+            /*
+             * نحاول أولًا استخدام RemoteInputs
+             * التي تسمح بإدخال نص حر.
+             */
             val usableInputs =
                 remoteInputs.filter {
                     it.allowFreeFormInput
@@ -341,9 +345,11 @@ class BotNotificationListener : NotificationListenerService() {
                 continue
             }
 
-            val intent = Intent()
+            val intent =
+                Intent()
 
-            val results = Bundle()
+            val results =
+                Bundle()
 
             for (input in inputs) {
 
@@ -354,10 +360,10 @@ class BotNotificationListener : NotificationListenerService() {
             }
 
             /*
-             * الطريقة الأصلية تبقى كما هي:
+             * طريقة الرد الأصلية:
              *
              * RemoteInput
-             *       ↓
+             *      ↓
              * actionIntent
              */
             RemoteInput.addResultsToIntent(
@@ -396,7 +402,9 @@ class BotNotificationListener : NotificationListenerService() {
 
                 return
 
-            } catch (e: PendingIntent.CanceledException) {
+            } catch (
+                e: PendingIntent.CanceledException
+            ) {
 
                 Log.e(
                     TAG,
@@ -417,14 +425,11 @@ class BotNotificationListener : NotificationListenerService() {
         /*
          * لا يوجد RemoteInput قابل للاستخدام.
          *
-         * مهم:
-         * لا نحذف الإشعار،
-         * لا نفتح Messenger،
-         * ولا نستخدم Accessibility.
+         * لا نحذف الإشعار.
+         * لا نفتح Messenger.
+         * لا نستخدم Accessibility.
          *
-         * نسجل فقط أن هذا النوع لا يوفر
-         * قناة Reply يمكن لـNotificationListener
-         * استخدامها.
+         * فقط نسجل الحالة.
          */
         Log.d(
             TAG,
@@ -438,7 +443,7 @@ class BotNotificationListener : NotificationListenerService() {
     }
 
     // =========================
-    // Logging helpers
+    // قراءة Extras
     // =========================
 
     private fun logExtra(
@@ -462,6 +467,10 @@ class BotNotificationListener : NotificationListenerService() {
         } catch (_: Exception) {
         }
     }
+
+    // =========================
+    // وصف محتوى Extra
+    // =========================
 
     private fun describeValue(
         value: Any?
@@ -492,6 +501,10 @@ class BotNotificationListener : NotificationListenerService() {
         }
     }
 
+    // =========================
+    // إزالة الإشعار
+    // =========================
+
     override fun onNotificationRemoved(
         sbn: StatusBarNotification,
         rankingMap: RankingMap
@@ -506,6 +519,10 @@ class BotNotificationListener : NotificationListenerService() {
             "🗑 Messenger notification removed: ${sbn.key}"
         )
     }
+
+    // =========================
+    // انقطاع الخدمة
+    // =========================
 
     override fun onListenerDisconnected() {
 
