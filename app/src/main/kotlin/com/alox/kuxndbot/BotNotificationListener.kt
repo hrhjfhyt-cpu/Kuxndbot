@@ -83,7 +83,8 @@ class BotNotificationListener : NotificationListenerService() {
             ReplyItem(
                 notification = sbn,
                 text = reply,
-                readyAt = System.currentTimeMillis() +
+                readyAt =
+                    System.currentTimeMillis() +
                     delay * 1000L
             )
 
@@ -112,6 +113,7 @@ class BotNotificationListener : NotificationListenerService() {
             )
 
             if (chatKey !in processingChats) {
+
                 processingChats.add(chatKey)
 
                 handler.post {
@@ -124,25 +126,26 @@ class BotNotificationListener : NotificationListenerService() {
     private fun processChatQueue(
         chatKey: String
     ) {
-        val item: ReplyItem?
 
-        synchronized(queueLock) {
+        val item =
+            synchronized(queueLock) {
 
-            val queue =
-                chatQueues[chatKey]
+                val queue =
+                    chatQueues[chatKey]
 
-            if (
-                queue == null ||
-                queue.isEmpty()
-            ) {
-                chatQueues.remove(chatKey)
-                processingChats.remove(chatKey)
-                return
-            }
+                if (
+                    queue == null ||
+                    queue.isEmpty()
+                ) {
 
-            item =
+                    chatQueues.remove(chatKey)
+                    processingChats.remove(chatKey)
+
+                    return
+                }
+
                 queue.peekFirst()
-        }
+            }
 
         val now =
             System.currentTimeMillis()
@@ -171,7 +174,10 @@ class BotNotificationListener : NotificationListenerService() {
                 queue == null ||
                 queue.isEmpty()
             ) {
+
+                chatQueues.remove(chatKey)
                 processingChats.remove(chatKey)
+
                 return
             }
 
@@ -240,21 +246,26 @@ class BotNotificationListener : NotificationListenerService() {
 
         val conversationTitle =
             try {
+
                 extras.getCharSequence(
                     Notification.EXTRA_TITLE
                 )?.toString()
+
             } catch (e: Exception) {
                 null
             }
 
         val groupKey =
             try {
+
                 sbn.notification.group
+
             } catch (e: Exception) {
                 null
             }
 
         return when {
+
             !groupKey.isNullOrBlank() ->
                 "group:$groupKey"
 
@@ -270,6 +281,7 @@ class BotNotificationListener : NotificationListenerService() {
         sbn: StatusBarNotification,
         text: String
     ) {
+
         val notification =
             sbn.notification
 
@@ -454,7 +466,11 @@ class BotNotificationListener : NotificationListenerService() {
         sbn: StatusBarNotification,
         rankingMap: RankingMap
     ) {
-        if (sbn.packageName != MESSENGER_PACKAGE) {
+
+        if (
+            sbn.packageName !=
+            MESSENGER_PACKAGE
+        ) {
             return
         }
 
@@ -465,6 +481,7 @@ class BotNotificationListener : NotificationListenerService() {
     }
 
     override fun onListenerDisconnected() {
+
         super.onListenerDisconnected()
 
         Log.d(
@@ -473,6 +490,7 @@ class BotNotificationListener : NotificationListenerService() {
         )
 
         synchronized(queueLock) {
+
             chatQueues.clear()
             processingChats.clear()
         }
