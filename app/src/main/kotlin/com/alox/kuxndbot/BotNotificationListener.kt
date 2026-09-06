@@ -19,24 +19,27 @@ class BotNotificationListener : NotificationListenerService() {
     companion object {
         private const val TAG = "AloxBot"
         private const val MESSENGER_PACKAGE = "com.facebook.orca"
+
+        // أقصى عدد رسائل تنتظر في كل محادثة
         private const val MAX_QUEUE_PER_CHAT = 5
     }
 
-    private val handler = Handler(Looper.getMainLooper())
-
     private data class ReplyItem(
-        val notification: StatusBarNotification,
-        val text: String,
-        val readyAt: Long
+        val notificationKey: String,
+        val notification: StatusBarNotification
     )
 
+    private val handler = Handler(Looper.getMainLooper())
+
+    private val queueLock = Any()
+
+    // Queue مستقلة لكل محادثة
     private val chatQueues =
         mutableMapOf<String, ArrayDeque<ReplyItem>>()
 
+    // المحادثات التي لديها Worker قيد التشغيل
     private val processingChats =
         mutableSetOf<String>()
-
-    private val queueLock = Any()
 
     override fun onListenerConnected() {
         super.onListenerConnected()
@@ -70,23 +73,7 @@ class BotNotificationListener : NotificationListenerService() {
             return
         }
 
-        val delay =
-            prefs.getInt(
-                "delay",
-                10
-            ).coerceAtLeast(0)
-
-        val chatKey =
-            getChatKey(sbn)
-
-        val item =
-            ReplyItem(
-                notification = sbn,
-                text = reply,
-                readyAt =
-                    System.currentTimeMillis() +
-                    delay * 1000L
-            )
+        val chatKey = getChatKey(sbn)
 
         synchronized(queueLock) {
 
@@ -95,25 +82,29 @@ class BotNotificationListener : NotificationListenerService() {
                     ArrayDeque()
                 }
 
+            // لا نسمح بتراكم أكثر من 5 رسائل
             if (queue.size >= MAX_QUEUE_PER_CHAT) {
-                queue.removeFirst()
-
                 Log.d(
                     TAG,
-                    "Queue limit reached for chat: $chatKey"
+                    "Queue full for chat=$chatKey, notification ignored"
                 )
+                return
             }
 
-            queue.addLast(item)
+            queue.addLast(
+                ReplyItem(
+                    notificationKey = sbn.key,
+                    notification = sbn
+                )
+            )
 
             Log.d(
                 TAG,
-                "Queued reply for chat=$chatKey " +
-                    "queueSize=${queue.size}"
+                "Queued message for chat=$chatKey, size=${queue.size}"
             )
 
-            if (chatKey !in processingChats) {
-
+            // Worker واحد فقط لكل محادثة
+            if (!processingChats.contains(chatKey)) {
                 processingChats.add(chatKey)
 
                 handler.post {
@@ -123,6 +114,44 @@ class BotNotificationListener : NotificationListenerService() {
         }
     }
 
+    /**
+     * تحديد المحادثة.
+     *
+     * نحاول استخدام notification group أولاً،
+     * ثم عنوان الإشعار،
+     * ثم fallback يعتمد على id/tag.
+     */
+    private fun getChatKey(
+        sbn: StatusBarNotification
+    ): String {
+
+        val notification = sbn.notification
+
+        val group =
+            notification.group
+
+        if (!group.isNullOrBlank()) {
+            return "group:$group"
+        }
+
+        val title =
+            notification.extras?.getCharSequence(
+                Notification.EXTRA_TITLE
+            )?.toString()
+
+        if (!title.isNullOrBlank()) {
+            return "title:$title"
+        }
+
+        return "notification:${sbn.id}:${sbn.tag ?: ""}"
+    }
+
+    /**
+     * Worker واحد لكل محادثة.
+     *
+     * بعد كل محاولة إرسال:
+     * ننتظر مدة التأخير كاملة قبل الرسالة التالية.
+     */
     private fun processChatQueue(
         chatKey: String
     ) {
@@ -137,144 +166,102 @@ class BotNotificationListener : NotificationListenerService() {
                     queue == null ||
                     queue.isEmpty()
                 ) {
-
                     chatQueues.remove(chatKey)
                     processingChats.remove(chatKey)
-
                     return
                 }
 
                 queue.peekFirst()
             }
 
-        val now =
-            System.currentTimeMillis()
-
-        val wait =
-            (item.readyAt - now).coerceAtLeast(0L)
-
-        if (wait > 0L) {
-
-            handler.postDelayed(
-                {
-                    processChatQueue(chatKey)
-                },
-                wait
+        val prefs =
+            getSharedPreferences(
+                "bot_settings",
+                MODE_PRIVATE
             )
+
+        if (!prefs.getBoolean("enabled", false)) {
+
+            synchronized(queueLock) {
+                chatQueues.remove(chatKey)
+                processingChats.remove(chatKey)
+            }
 
             return
         }
 
+        val text =
+            prefs.getString(
+                "reply",
+                ""
+            ) ?: ""
+
+        if (text.isBlank()) {
+
+            synchronized(queueLock) {
+                chatQueues.remove(chatKey)
+                processingChats.remove(chatKey)
+            }
+
+            return
+        }
+
+        val delaySeconds =
+            prefs.getInt(
+                "delay",
+                10
+            ).coerceAtLeast(0)
+
+        val current =
+            activeNotifications?.firstOrNull {
+                it.key == item.notificationKey
+            } ?: item.notification
+
+        try {
+
+            sendReply(
+                current,
+                text
+            )
+
+        } catch (e: Exception) {
+
+            Log.e(
+                TAG,
+                "Reply failed",
+                e
+            )
+        }
+
+        // حذف الرسالة التي تمت معالجتها
         synchronized(queueLock) {
 
             val queue =
                 chatQueues[chatKey]
 
             if (
-                queue == null ||
-                queue.isEmpty()
+                queue != null &&
+                queue.isNotEmpty()
             ) {
-
-                chatQueues.remove(chatKey)
-                processingChats.remove(chatKey)
-
-                return
-            }
-
-            val current =
                 queue.removeFirst()
-
-            try {
-
-                val prefs =
-                    getSharedPreferences(
-                        "bot_settings",
-                        MODE_PRIVATE
-                    )
-
-                if (
-                    prefs.getBoolean(
-                        "enabled",
-                        false
-                    )
-                ) {
-
-                    val currentReply =
-                        prefs.getString(
-                            "reply",
-                            ""
-                        ) ?: ""
-
-                    if (currentReply.isNotBlank()) {
-
-                        sendReply(
-                            current.notification,
-                            currentReply
-                        )
-                    }
-                }
-
-            } catch (e: Exception) {
-
-                Log.e(
-                    TAG,
-                    "Queued reply failed",
-                    e
-                )
-            }
-
-            if (queue.isEmpty()) {
-
-                chatQueues.remove(chatKey)
-                processingChats.remove(chatKey)
-
-                return
             }
         }
 
-        handler.post {
-            processChatQueue(chatKey)
-        }
-    }
+        /*
+         * لا نرسل الرسالة التالية مباشرة.
+         *
+         * ننتظر مدة التأخير كاملة بعد كل رد،
+         * حتى لو كانت الرسائل قد وصلت في نفس اللحظة.
+         */
+        val nextDelay =
+            delaySeconds * 1000L
 
-    private fun getChatKey(
-        sbn: StatusBarNotification
-    ): String {
-
-        val extras =
-            sbn.notification.extras
-
-        val conversationTitle =
-            try {
-
-                extras.getCharSequence(
-                    Notification.EXTRA_TITLE
-                )?.toString()
-
-            } catch (e: Exception) {
-                null
-            }
-
-        val groupKey =
-            try {
-
-                sbn.notification.group
-
-            } catch (e: Exception) {
-                null
-            }
-
-        return when {
-
-            !groupKey.isNullOrBlank() ->
-                "group:$groupKey"
-
-            !conversationTitle.isNullOrBlank() ->
-                "title:$conversationTitle"
-
-            else ->
-                "fallback:${sbn.id}:${sbn.tag ?: ""}"
-        }
+        handler.postDelayed(
+            {
+                processChatQueue(chatKey)
+            },
+            nextDelay
+        )
     }
 
     private fun sendReply(
@@ -284,6 +271,10 @@ class BotNotificationListener : NotificationListenerService() {
 
         val notification =
             sbn.notification
+
+        // =============================================================
+        // الطريقة 1: Standard Actions + RemoteInput
+        // =============================================================
 
         val actions =
             notification.actions
@@ -320,6 +311,10 @@ class BotNotificationListener : NotificationListenerService() {
             }
         }
 
+        // =============================================================
+        // الطريقة 2: CarExtender / Android Auto
+        // =============================================================
+
         try {
 
             val carExtender =
@@ -330,7 +325,9 @@ class BotNotificationListener : NotificationListenerService() {
             val unreadConversation =
                 carExtender.unreadConversation
 
-            if (unreadConversation != null) {
+            if (
+                unreadConversation != null
+            ) {
 
                 val carRemoteInput =
                     unreadConversation.remoteInput
@@ -394,7 +391,7 @@ class BotNotificationListener : NotificationListenerService() {
             return false
         }
 
-        try {
+        return try {
 
             val intent =
                 Intent()
@@ -448,7 +445,7 @@ class BotNotificationListener : NotificationListenerService() {
                 "SUCCESSFULLY REPLIED using method: $sourceTag"
             )
 
-            return true
+            true
 
         } catch (e: Exception) {
 
@@ -457,42 +454,34 @@ class BotNotificationListener : NotificationListenerService() {
                 "Failed sending via $sourceTag",
                 e
             )
+
+            false
         }
-
-        return false
-    }
-
-    override fun onNotificationRemoved(
-        sbn: StatusBarNotification,
-        rankingMap: RankingMap
-    ) {
-
-        if (
-            sbn.packageName !=
-            MESSENGER_PACKAGE
-        ) {
-            return
-        }
-
-        Log.d(
-            TAG,
-            "Messenger notification removed: ${sbn.key}"
-        )
     }
 
     override fun onListenerDisconnected() {
-
         super.onListenerDisconnected()
 
         Log.d(
             TAG,
             "BOT DISCONNECTED"
         )
+    }
+
+    override fun onDestroy() {
+
+        handler.removeCallbacksAndMessages(null)
 
         synchronized(queueLock) {
-
             chatQueues.clear()
             processingChats.clear()
         }
+
+        super.onDestroy()
+
+        Log.d(
+            TAG,
+            "BOT DESTROYED"
+        )
     }
 }
